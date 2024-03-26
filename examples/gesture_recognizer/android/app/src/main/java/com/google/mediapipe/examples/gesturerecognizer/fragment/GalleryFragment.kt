@@ -35,6 +35,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.mediapipe.examples.gesturerecognizer.GestureRecognizerHelper
 import com.google.mediapipe.examples.gesturerecognizer.MainViewModel
+import com.google.mediapipe.examples.gesturerecognizer.SharedViewModel
 import com.google.mediapipe.examples.gesturerecognizer.databinding.FragmentGalleryBinding
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import java.util.*
@@ -44,7 +45,6 @@ import java.util.concurrent.TimeUnit
 
 class GalleryFragment : Fragment(),
     GestureRecognizerHelper.GestureRecognizerListener {
-
     enum class MediaType {
         IMAGE,
         VIDEO,
@@ -62,6 +62,8 @@ class GalleryFragment : Fragment(),
             updateAdapterSize(defaultNumResults)
         }
     }
+
+    val sharedViewModel: SharedViewModel by activityViewModels()
 
     /** Blocking ML operations are performed using this executor */
     private lateinit var backgroundExecutor: ScheduledExecutorService
@@ -107,6 +109,12 @@ class GalleryFragment : Fragment(),
             adapter = gestureRecognizerResultsAdapter
         }
         initBottomSheetControls()
+
+
+        sharedViewModel.imageLiveData.observe(viewLifecycleOwner) { image ->
+            Log.d("BluetoothSocket", "Recognizing Gesture")
+            recognizeGesture(image)
+        }
     }
 
     override fun onPause() {
@@ -305,6 +313,73 @@ class GalleryFragment : Fragment(),
                     gestureRecognizerHelper.clearGestureRecognizer()
                 }
             }
+    }
+
+    private fun recognizeGesture(bitmap: Bitmap) {
+        setUiEnabled(false)
+        backgroundExecutor = Executors.newSingleThreadScheduledExecutor()
+        updateDisplayView(MediaType.IMAGE)
+        fragmentGalleryBinding.imageResult.setImageBitmap(bitmap)
+        Log.d("BluetoothSocket", "Inside recognize Gesture")
+        // Run gesture recognizer on the input image
+        backgroundExecutor.execute {
+
+            gestureRecognizerHelper =
+                GestureRecognizerHelper(
+                    context = requireContext(),
+                    runningMode = RunningMode.IMAGE,
+                    minHandDetectionConfidence = viewModel.currentMinHandDetectionConfidence,
+                    minHandTrackingConfidence = viewModel.currentMinHandTrackingConfidence,
+                    minHandPresenceConfidence = viewModel.currentMinHandPresenceConfidence,
+                    currentDelegate = viewModel.currentDelegate
+                )
+
+            gestureRecognizerHelper.recognizeImage(bitmap)
+                ?.let { resultBundle ->
+                    activity?.runOnUiThread {
+
+                        fragmentGalleryBinding.overlay.setResults(
+                            resultBundle.results[0],
+                            bitmap.height,
+                            bitmap.width,
+                            RunningMode.IMAGE
+                        )
+
+                        // This will return an empty list if there are no gestures detected
+                        if(!resultBundle.results.first().gestures().isEmpty()) {
+                            gestureRecognizerResultsAdapter.updateResults(
+                                resultBundle.results.first()
+                                    .gestures().first()
+                            )
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "Hands not detected",
+                                Toast.LENGTH_SHORT).show()
+                        }
+
+                        setUiEnabled(true)
+                        fragmentGalleryBinding.bottomSheetLayout.inferenceTimeVal.text =
+                            String.format(
+                                "%d ms",
+                                resultBundle.inferenceTime
+                            )
+                    }
+                    val firstResult = resultBundle.results.firstOrNull()?.gestures()?.firstOrNull()
+//                    Log.d("BluetoothSocket", "Final result: ${firstResult?.get(0)?.categoryName()}, score: ${
+//                        firstResult?.get(0)?.score()
+//                    }")
+                    firstResult?.let {
+                        sharedViewModel.postGestureRecognitionResult(firstResult[0].categoryName(), firstResult[0].score())
+                    }
+                } ?: run {
+                Log.e(
+                    TAG, "Error running gesture recognizer."
+                )
+            }
+
+            gestureRecognizerHelper.clearGestureRecognizer()
+        }
     }
 
     // Load and display the video.

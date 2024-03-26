@@ -16,6 +16,7 @@
 package com.google.mediapipe.examples.gesturerecognizer.fragment
 
 import android.annotation.SuppressLint
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -82,6 +83,12 @@ class GestureRecognizerResultsAdapter :
                     "%.2f",
                     score
                 ) else NO_VALUE
+                if (label != null && score != null) {
+                    Log.d(
+                        "GestureRecognition",
+                        "Gesture recognized in image: ${tvLabel.text} with confidence: ${tvScore.text}"
+                    )
+                }
             }
         }
     }
